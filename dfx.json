@@ -1,0 +1,29 @@
+{
+  "canisters": {
+    "icp_bd_backend": {
+      "candid": "src/icp_bd_backend/icp_bd_backend.did",
+      "package": "icp_bd_backend",
+      "type": "rust"
+    },
+    "icp_bd_frontend": {
+      "dependencies": [
+        "icp_bd_backend"
+      ],
+      "frontend": {
+        "entrypoint": "src/icp_bd_frontend/src/index.html"
+      },
+      "source": [
+        "src/icp_bd_frontend/assets",
+        "dist/icp_bd_frontend/"
+      ],
+      "type": "assets"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "version": 1
+}
