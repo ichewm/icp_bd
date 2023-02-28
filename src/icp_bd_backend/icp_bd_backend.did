@@ -1,3 +1,31 @@
+type Currency = variant {
+    XTC;
+    WICP;
+    ICP;
+    SONIC;
+};
+
+
+type IcpXdrConversionRateCertifiedResponse = record {
+  certificate: vec nat8;
+  data: IcpXdrConversionRate;
+  hash_tree: vec nat8;
+};
+
+
+type IcpXdrConversionRate = record {
+  xdr_permyriad_per_icp: nat64;
+  timestamp_seconds: nat64;
+};
+
+
+
 service : {
-    "greet": (text) -> (text) query;
+     "my_cycles_balance" : () -> (nat64) query;
+     "my_canister_config" : (Currency) -> (principal) query;
+     "get_cycles_rate" : () -> (IcpXdrConversionRateCertifiedResponse, );
+     "ic_time" : () -> (nat64) query;
+     "icp_balance" : (principal) -> (nat64);
+     "get_swap_price" : (Currency, Currency) -> (float64);
 }
+

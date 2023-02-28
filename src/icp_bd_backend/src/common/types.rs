@@ -1,0 +1,47 @@
+use ic_cdk::export::candid::{CandidType, Deserialize, Nat};
+
+#[derive(CandidType, Deserialize)]
+pub enum Order {
+    Market(MarketOrder),
+    Limit(LimitOrder),
+}
+
+#[derive(CandidType)]
+pub enum DepositErr {
+    BalanceLow,
+    TransferFailure,
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct MarketOrder {
+    pub give_currency: Currency,
+    pub take_currency: Currency,
+    pub directive: OrderDirective,
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub struct LimitOrder {
+    pub target_price_condition: TargetPrice,
+    pub market_order: MarketOrder,
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub enum TargetPrice {
+    MoreThan(f64),
+    LessThan(f64),
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub enum OrderDirective {
+    GiveExact(Nat),
+    TakeExact(Nat),
+}
+
+#[derive(CandidType, Deserialize, Clone)]
+pub enum Currency {
+    ICP,
+    XTC,
+    WICP,
+    SONIC,
+    NnsCyclesMinting,
+}
