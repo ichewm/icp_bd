@@ -1,6 +1,8 @@
 mod clients;
 mod common;
 
+use std::borrow::BorrowMut;
+
 use crate::clients::dip20::Dip20;
 use crate::clients::sonic::Sonic;
 use crate::clients::xtc::{XTCBurnPayload, XTC};
@@ -52,6 +54,20 @@ pub fn ic_time() -> u64 {
     ic_cdk::api::time()
 }
 
+
+// 用户获取自己的子账户
+// 用户向显示用户存钱
+#[query]
+fn select_canister_account_id() -> String {
+    let canister_id = ic_cdk::api::id();
+    let id = ic_cdk::api::caller();  // 当前请求用户的唯一标识
+    AccountIdentifier::new(
+        &canister_id,
+        &Subaccount::from(id)
+    ).to_string()
+}
+
+
 #[update]
 pub async fn icp_balance(account_id: Principal) -> u64 {
     let state = get_state();
@@ -64,10 +80,12 @@ pub async fn icp_balance(account_id: Principal) -> u64 {
     balance.e8s()
 }
 
+
 #[update]
-pub async fn get_cycles_rate() -> (IcpXdrConversionRateCertifiedResponse, ) {
+pub async fn get_cycles_rate() -> f64 {
     let start = get_state();
-    NNS_Cycle_Minting::get_icp_xdr_conversion_rate(&start.nns_cycles_minting_canister).await.expect("Server error")
+    let get_icp_xdr_conversion_rate_response =  NNS_Cycle_Minting::get_icp_xdr_conversion_rate(&start.nns_cycles_minting_canister).await.expect("Server error").0;
+    get_icp_xdr_conversion_rate_response.data.xdr_permyriad_per_icp.to_f64().unwrap()/10000f64
 }
 
 

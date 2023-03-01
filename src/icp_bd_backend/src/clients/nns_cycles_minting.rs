@@ -5,16 +5,20 @@ use ic_cdk::export::candid::{CandidType, Deserialize, Nat, Principal};
 
 #[derive(CandidType, Deserialize)]
 pub struct IcpXdrConversionRateCertifiedResponse {
-  certificate: Vec<u8>,
-  data: IcpXdrConversionRate,
-  hash_tree: Vec<u8>,
+  pub certificate: Vec<u8>,
+  pub data: IcpXdrConversionRate,
+  pub hash_tree: Vec<u8>,
 }
 
+fn get_empty_vec() -> Vec<i32> {
+  let empty_vec: Vec<i32> = vec![];
+  return empty_vec;
+}
 
 #[derive(CandidType, Deserialize)]
 pub struct IcpXdrConversionRate {
-  xdr_permyriad_per_icp: u64,
-  timestamp_seconds: u64,
+  pub xdr_permyriad_per_icp: u64,
+  pub timestamp_seconds: u64,
 }
 
 
