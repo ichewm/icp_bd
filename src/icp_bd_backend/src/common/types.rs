@@ -44,4 +44,5 @@ pub enum Currency {
     WICP,
     SONIC,
     NnsCyclesMinting,
+    BlackHole,
 }

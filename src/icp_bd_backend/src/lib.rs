@@ -2,11 +2,11 @@ mod clients;
 mod common;
 
 use std::borrow::BorrowMut;
-
 use crate::clients::dip20::Dip20;
 use crate::clients::sonic::Sonic;
 use crate::clients::xtc::{XTCBurnPayload, XTC};
 use crate::clients::nns_cycles_minting::{NNS_Cycle_Minting, IcpXdrConversionRateCertifiedResponse, IcpXdrConversionRate};
+use crate::clients::black_hole::{BlackHole, CanisterStatusArg0};
 use crate::common::guards::controller_guard;
 use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice};
 use bigdecimal::num_bigint::{BigInt, ToBigInt};
@@ -20,6 +20,7 @@ use ic_cdk_macros::{heartbeat, init, post_upgrade, pre_upgrade, query, update};
 use ic_cron::implement_cron;
 use ic_cron::types::{Iterations, SchedulingOptions, TaskId};
 use ic_ledger_types::{AccountIdentifier, Subaccount, DEFAULT_SUBACCOUNT, AccountBalanceArgs, TransferArgs, Memo, Tokens, BlockIndex, TransferResult};
+
 
 async fn get_swap_price_internal(give_currency: Currency, take_currency: Currency) -> BigDecimal {
     let state = get_state();
@@ -55,8 +56,6 @@ pub fn ic_time() -> u64 {
 }
 
 
-// 用户获取自己的子账户
-// 用户向显示用户存钱
 #[query]
 fn select_canister_account_id() -> String {
     let canister_id = ic_cdk::api::id();
@@ -87,6 +86,17 @@ pub async fn get_cycles_rate() -> f64 {
     let get_icp_xdr_conversion_rate_response =  NNS_Cycle_Minting::get_icp_xdr_conversion_rate(&start.nns_cycles_minting_canister).await.expect("Server error").0;
     get_icp_xdr_conversion_rate_response.data.xdr_permyriad_per_icp.to_f64().unwrap()/10000f64
 }
+
+// 使用 blackhole 查询周期余额
+// 需要执行以下命令
+// dfx canister --network=ic update-settings --add-controller e3mmv-5qaaa-aaaah-aadma-cai iwzcr-cqaaa-aaaan-qc6sa-cai
+#[update]
+pub async fn use_black_hole_cycles_balance(canister_id:Principal) -> Nat {
+    let start = get_state();
+    let canister_id_status = BlackHole::canister_status(&start.black_hole_canister, CanisterStatusArg0{canister_id: canister_id}).await.expect("Server error").0;
+    canister_id_status.cycles
+}
+
 
 
 #[update]
@@ -121,6 +131,7 @@ fn token_id_by_currency(currency: Currency) -> Principal {
         Currency::ICP => state.icp_canister,
         Currency::SONIC => state.sonic_swap_canister,
         Currency::NnsCyclesMinting => state.nns_cycles_minting_canister,
+        Currency::BlackHole => state.black_hole_canister,
     }
 }
 
@@ -133,6 +144,7 @@ pub struct State {
     pub wicp_canister: Principal,
     pub sonic_swap_canister: Principal,
     pub nns_cycles_minting_canister: Principal,
+    pub black_hole_canister: Principal,
 }
 
 pub static mut STATE: Option<State> = None;
@@ -150,6 +162,7 @@ pub fn init() {
             wicp_canister: Principal::from_text("utozz-siaaa-aaaam-qaaxq-cai").unwrap(),
             sonic_swap_canister: Principal::from_text("3xwpq-ziaaa-aaaah-qcn4a-cai").unwrap(),
             nns_cycles_minting_canister: Principal::from_text("rkp4c-7iaaa-aaaaa-aaaca-cai").unwrap(),
+            black_hole_canister: Principal::from_text("e3mmv-5qaaa-aaaah-aadma-cai").unwrap(),
         })
     }
 }
