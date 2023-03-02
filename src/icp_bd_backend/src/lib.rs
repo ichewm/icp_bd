@@ -2,7 +2,7 @@ mod clients;
 mod common;
 
 use std::borrow::BorrowMut;
-use std::cell::RefCell;
+use std::cell::{RefCell, Cell};
 use crate::clients::dip20::Dip20;
 use crate::clients::sonic::Sonic;
 use crate::clients::xtc::{XTCBurnPayload, XTC};
@@ -25,12 +25,18 @@ use ic_cron::implement_cron;
 use ic_cron::types::{Iterations, SchedulingOptions, TaskId};
 use ic_ledger_types::{AccountIdentifier, Subaccount, DEFAULT_SUBACCOUNT, AccountBalanceArgs, TransferArgs, Memo, Tokens, BlockIndex, TransferResult};
 
+
+
 type Members = RefCell<BTreeMap<Principal, RefCell<MemberInfo>>>;
 type Canisters = RefCell<BTreeMap<Principal, RefCell<CanisterInfo>>>;
 
 type OrganizesToMembers = BTreeMap<OrganizeName, Members>;  // 组织映射组员
 type OrganizesToCanisters = BTreeMap<OrganizeName, Canisters>;  // 组织映射罐
 type OrganizesToOwner = BTreeMap<OrganizeName, RefCell<OrganizeOwner>>;  // 组织映射所有者
+
+// 组织所有者 下组织及用户输出结构
+type OrganizationOwnerMemberOutput = Vec<OrganizesToMembers>;
+
 
 // 存储结构
 thread_local!{
@@ -92,9 +98,124 @@ pub async fn disband_the_organization(organize_name: String) -> String {
 }
 
 // 组织所有人 向组织 添加成员
+#[update]
+pub async fn organization_owner_add_members_to_organization(member_id: Principal, member_name: String, organize_name: String) -> String {
+    let requester_id = ic_cdk::api::caller();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 组织必须存在
+        if !organizes_to_owner.borrow().contains_key(&organize_name){
+            String::from("organization does not exist")  // 组织不存在
+        }
+        // 操作人必须是 owner
+        if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
+            String::from("Non-organization owners cannot add members")  // 非组织所有者不可添加成员
+        }
+        ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
+            // 检查组织是否存在不存在就新增
+            if organizes_to_members.borrow().get(&organize_name).is_some(){
+                // 检查这个成员是否存在
+                if organizes_to_members.borrow().get(&organize_name).unwrap().borrow().get(&member_id).is_some(){
+                    String::from("The member already exists in this organization")  // 该成员已经存在于这个组织
+                } else {
+                    // 成员不存在 新增成员
+                    organizes_to_members.borrow_mut().get(&organize_name).unwrap().borrow_mut().insert(
+                        member_id, 
+                        RefCell::new(
+                            MemberInfo{
+                                nickname: member_name,
+                                instime: Cell::new(ic_cdk::api::time())
+                            }
+                        ));
+                    String::from("added successfully")  // 新增成功
+                }
+            } else {
+                // 组织如果不存在就新增组织并添加成员
+
+                // 创建成员结构
+                let mut memberinfo = BTreeMap::new();
+                memberinfo.insert(member_id, MemberInfo{
+                    nickname: member_name,
+                    instime: Cell::new(ic_cdk::api::time())
+                });
+                // 插入 组织
+                organizes_to_members.borrow_mut().insert(
+                    organize_name,
+                    Members::from(memberinfo)
+                );
+                String::from("Organization member added successfully")  // 组织成员新增成功
+            }
+        });
+    })
+}
 
 
+// 组织 所有人 减掉 组织成员
+#[update]
+pub async fn organization_owner_minus_organization_members(member_id: Principal, organize_name: String) -> String {
+    let requester_id = ic_cdk::api::caller();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 组织必须存在
+        if !organizes_to_owner.borrow().contains_key(&organize_name){
+            String::from("organization does not exist")  // 组织不存在
+        }
+        // 操作人必须是 owner
+        if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
+            String::from("Non-organization owners cannot add members")  // 非组织所有者不可添加成员
+        }
+        ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
+            // 检查组织是否存在不存在就新增
+            if organizes_to_members.borrow().get(&organize_name).is_some(){
+                // 检查这个成员是否存在 存在就删除成员
+                if organizes_to_members.borrow().get(&organize_name).unwrap().borrow().get(&member_id).is_some(){
+                    organizes_to_members.borrow_mut().get(&organize_name).unwrap().borrow_mut().remove(&member_id);
+                    String::from("The member has been removed from the organization")  // 该成员已在组织中删除
+                } else {
+                    // 成员不存在 新增成员
+                    String::from("The member does not exist in the organization")  // 该成员不存在于组织中
+                }
+            } else {
+                // 组织如果不存在说明还没有添加过成员 直接返回成员不存在
+                String::from("The member does not exist in the organization")  // 该成员不存在于组织中
+            }
+        })
+    })
+}
 
+
+// 组织所有者查询自己名下组织及组织下的用户
+#[query]
+pub async fn the_organization_owner_queries_the_organization_under_his_own_name_and_the_users_under_the_organization() -> OrganizationOwnerMemberOutput {
+    let requester_id = ic_cdk::api::caller();
+    // 找到这个人的所有组织
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 创建一个存储 组织名的 向量
+        let mut organizes:Vec<String> = Vec::new();
+        // 创建一个输出 结构
+        let mut organization_owner_member_output = OrganizationOwnerMemberOutput::new();
+
+        for (organize_name, owner_id) in organizes_to_owner.into_iter(){
+            if owner_id == RefCell::new(requester_id) {
+                organizes.push(organize_name);
+            }
+        }
+        ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
+            // // 循环 组织名向量 获取所有组织下的所有成员
+            for organize_name in organizes {
+                let memberout = organizes_to_members.get(&organize_name);
+                match memberout {
+                    Some(member_info) => {
+                        let mut o_t_m = OrganizesToMembers::new();
+                        o_t_m.insert(organize_name, member_info);
+                        organization_owner_member_output.push(o_t_m);
+                    },
+                    None => (),
+                }
+            }
+        });
+        organization_owner_member_output
+
+    })
+}
 
 
 async fn get_swap_price_internal(give_currency: Currency, take_currency: Currency) -> BigDecimal {
