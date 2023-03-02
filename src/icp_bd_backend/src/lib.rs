@@ -104,13 +104,13 @@ pub async fn organization_owner_add_members_to_organization(member_id: Principal
     ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
         // 组织必须存在
         if !organizes_to_owner.borrow().contains_key(&organize_name){
-            String::from("organization does not exist")  // 组织不存在
-        }
+           return String::from("organization does not exist");  // 组织不存在
+        };
 
         // 操作人必须是 owner
         if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
-            String::from("Non-organization owners cannot add members")  // 非组织所有者不可添加成员
-        }
+            return String::from("Non-organization owners cannot add members");  // 非组织所有者不可添加成员
+        };
 
         ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
             // 检查组织是否存在不存在就新增
@@ -149,7 +149,8 @@ pub async fn organization_owner_add_members_to_organization(member_id: Principal
                 );
                 String::from("Organization member added successfully")  // 组织成员新增成功
             }
-        })
+        });
+    String::from("added successfully")
     })
 }
 
@@ -161,12 +162,12 @@ pub async fn organization_owner_minus_organization_members(member_id: Principal,
     ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
         // 组织必须存在
         if !organizes_to_owner.borrow().contains_key(&organize_name){
-            String::from("organization does not exist")  // 组织不存在
+            return String::from("organization does not exist");  // 组织不存在
         }
         // 操作人必须是 owner
         if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
-            String::from("Non-organization owners cannot add members")  // 非组织所有者不可添加成员
-        }
+            return String::from("Non-organization owners cannot add members");  // 非组织所有者不可添加成员
+        };
         ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
             // 检查组织是否存在不存在就新增
             if organizes_to_members.borrow().get(&organize_name).is_some(){

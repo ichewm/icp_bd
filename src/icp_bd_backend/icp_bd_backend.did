@@ -52,7 +52,7 @@ service : {
      "disband_the_organization": (text) -> (text);  // 解散组织
      "organization_owner_add_members_to_organization": (principal, text, text) -> (text);  // 组织所有人 向组织 添加成员
      "organization_owner_minus_organization_members": (principal, text) -> (text);  // 组织 所有人 减掉 组织成员
-     "the_organization_owner_queries_the_organization_under_his_own_name_and_the_users_under_the_organization": () -> OrganizationOwnerMemberOutput;  // 组织所有者查询自己名下组织及组织下的用户
+     "the_organization_owner_queries_the_organization_under_his_own_name_and_the_users_under_the_organization": () -> (OrganizationOwnerMemberOutput);  // 组织所有者查询自己名下组织及组织下的用户
 
 }
 
