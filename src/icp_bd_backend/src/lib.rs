@@ -87,6 +87,7 @@ pub async fn disband_the_organization(organize_name: String) -> String {
         if organizes_to_owner.borrow().contains_key(&organize_name){
             if organizes_to_owner.borrow().get(&organize_name).unwrap() == &RefCell::new(organize_owner) {
                 organizes_to_owner.borrow_mut().remove_entry(&organize_name);
+                delete_synchronously(&organize_name);
                 String::from("Organization Disbanded Successfully")  // 组织解散成功
             } else {
                 String::from("Non-organization owner, cannot perform dissolution")  // 非组织所有人，无法执行解散
@@ -217,9 +218,6 @@ pub async fn the_organization_owner_queries_the_organization_under_his_own_name_
                     None => {
                         let mut o_t_m = OrganizesToMembers::new();
                         let members: Members= BTreeMap::new().into();
-
-
-
                         o_t_m.insert(organize_name, members);
                         organization_owner_member_output.push(o_t_m);
                     },
@@ -230,6 +228,125 @@ pub async fn the_organization_owner_queries_the_organization_under_his_own_name_
 
     })
 }
+
+
+// 组织所有人向组织添加新罐
+#[update]
+pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_name:String, canister_id: Principal, time_interval: u64, cycles_minimum: u64, cycles_highest: u64) -> String {
+    let requester_id = ic_cdk::api::caller();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 组织必须存在
+        if !organizes_to_owner.borrow().contains_key(&organize_name){
+           return String::from("organization does not exist");  // 组织不存在
+        };
+
+        // 操作人必须是 owner
+        if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
+            return String::from("Non-organization owners cannot add members");  // 非组织所有者不可添加成员
+        };
+
+        ORGANIZES_TO_CANISTERS.with(|organizes_to_canisters|{
+            // 检查组织是否存在不存在就新增
+            if organizes_to_canisters.borrow().get(&organize_name).is_some(){
+                // 检查这个罐是否存在
+                if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
+                    String::from("The member already exists in this organization")  // 该成员已经存在于这个组织
+                } else {
+                    // 罐不存在 新增罐
+                    organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().insert(
+                        canister_id, 
+                        RefCell::new(
+                            CanisterInfo{
+                                nickname: member_name,
+                                instime: Cell::new(ic_cdk::api::time()),
+                                updtime: Cell::new(ic_cdk::api::time()),
+                                cycles_balance: Cell::new(use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap()),
+                                time_interval: Cell::new(time_interval),
+                                cycles_minimum: Cell::new(cycles_minimum),
+                                cycles_highest: Cell::new(cycles_highest),
+                            }
+                        ));
+                    String::from("added successfully")  // 新增成功
+                }
+            } else {
+                // 组织如果不存在就新增组织并添加罐
+
+                // 创建罐结构
+                let canisters: Canisters= BTreeMap::new().into();
+                canisters.borrow_mut().insert(
+                    canister_id, 
+                    RefCell::new(CanisterInfo{
+                        nickname: member_name,
+                        instime: Cell::new(ic_cdk::api::time()),
+                        updtime: Cell::new(ic_cdk::api::time()),
+                        cycles_balance: Cell::new(use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap()),
+                        time_interval: Cell::new(time_interval),
+                        cycles_minimum: Cell::new(cycles_minimum),
+                        cycles_highest: Cell::new(cycles_highest),
+                    })
+                );
+                // 插入 组织
+                organizes_to_canisters.borrow_mut().insert(
+                    organize_name,
+                    canisters
+                );
+                String::from("Organization canister added successfully")  // 组织罐新增成功
+            }
+        });
+    String::from("added successfully")
+    })
+}
+
+
+// 组织所有人 删除罐
+#[update]
+pub async fn organization_owner_delete_jar(organize_name:String, canister_id: Principal) -> String {
+    let requester_id = ic_cdk::api::caller();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 组织必须存在
+        if !organizes_to_owner.borrow().contains_key(&organize_name){
+            return String::from("organization does not exist");  // 组织不存在
+        }
+        // 操作人必须是 owner
+        if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
+            return String::from("Non-organization owners cannot add canister");  // 非组织所有者不可删除罐
+        };
+        ORGANIZES_TO_CANISTERS.with(|organizes_to_canisters|{
+            if organizes_to_canisters.borrow().get(&organize_name).is_some(){
+                // 检查这个罐是否存在 存在就删除罐
+                if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
+                    organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().remove(&canister_id);
+                    String::from("The canister has been removed from the organization")  // 该罐已在组织中删除
+                } else {
+                    String::from("The canister does not exist in the organization")  // 该罐不存在于组织中
+                }
+            } else {
+                // 组织如果不存在说明还没有添加过罐 直接返回罐不存在
+                String::from("The canister does not exist in the organization")  // 该罐不存在于组织中
+            }
+        })
+    })
+}
+
+
+// 组织所有人 查询自己名下组织及组织下的罐
+
+
+// 私有方法 
+// 同步删除
+fn delete_synchronously (organize_name:&String) {
+    // 删除组织的同时删除组织成员
+    ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
+        match organizes_to_members.borrow().get(organize_name) {
+            Some(member_info) => {
+                organizes_to_members.borrow_mut().remove(organize_name);
+            },
+            None => (),
+        }
+    })
+}
+
+
 
 
 async fn get_swap_price_internal(give_currency: Currency, take_currency: Currency) -> BigDecimal {
