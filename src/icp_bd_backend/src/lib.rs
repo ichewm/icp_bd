@@ -106,10 +106,12 @@ pub async fn organization_owner_add_members_to_organization(member_id: Principal
         if !organizes_to_owner.borrow().contains_key(&organize_name){
             String::from("organization does not exist")  // 组织不存在
         }
+
         // 操作人必须是 owner
         if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
             String::from("Non-organization owners cannot add members")  // 非组织所有者不可添加成员
         }
+
         ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
             // 检查组织是否存在不存在就新增
             if organizes_to_members.borrow().get(&organize_name).is_some(){
@@ -132,19 +134,22 @@ pub async fn organization_owner_add_members_to_organization(member_id: Principal
                 // 组织如果不存在就新增组织并添加成员
 
                 // 创建成员结构
-                let mut memberinfo = BTreeMap::new();
-                memberinfo.insert(member_id, MemberInfo{
-                    nickname: member_name,
-                    instime: Cell::new(ic_cdk::api::time())
-                });
+                let mut members: Members= BTreeMap::new().into();
+                members.borrow_mut().insert(
+                    member_id, 
+                    RefCell::new(MemberInfo{
+                        nickname: member_name,
+                        instime: Cell::new(ic_cdk::api::time())
+                    })
+                );
                 // 插入 组织
                 organizes_to_members.borrow_mut().insert(
                     organize_name,
-                    Members::from(memberinfo)
+                    members
                 );
                 String::from("Organization member added successfully")  // 组织成员新增成功
             }
-        });
+        })
     })
 }
 
@@ -193,19 +198,19 @@ pub async fn the_organization_owner_queries_the_organization_under_his_own_name_
         // 创建一个输出 结构
         let mut organization_owner_member_output = OrganizationOwnerMemberOutput::new();
 
-        for (organize_name, owner_id) in organizes_to_owner.into_iter(){
-            if owner_id == RefCell::new(requester_id) {
-                organizes.push(organize_name);
+        for (organize_name, owner_id) in organizes_to_owner.borrow_mut().iter(){
+            if *owner_id == RefCell::new(requester_id) {
+                // let f = organize_name.to_string();
+                organizes.push(organize_name.to_string());
             }
         }
         ORGANIZES_TO_MEMBERS.with(|organizes_to_members|{
             // // 循环 组织名向量 获取所有组织下的所有成员
             for organize_name in organizes {
-                let memberout = organizes_to_members.get(&organize_name);
-                match memberout {
+                match organizes_to_members.borrow().get(&organize_name) {
                     Some(member_info) => {
                         let mut o_t_m = OrganizesToMembers::new();
-                        o_t_m.insert(organize_name, member_info);
+                        o_t_m.insert(organize_name, member_info.clone());
                         organization_owner_member_output.push(o_t_m);
                     },
                     None => (),
