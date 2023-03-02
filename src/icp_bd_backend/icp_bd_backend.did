@@ -22,6 +22,7 @@ type IcpXdrConversionRate = record {
 
 
 service : {
+    // 测试单个接口
      "my_cycles_balance" : () -> (nat64) query;
      "my_canister_config" : (Currency) -> (principal) query;
      "select_canister_account_id" : () -> (text) query;
@@ -30,5 +31,10 @@ service : {
      "ic_time" : () -> (nat64) query;
      "icp_balance" : (principal) -> (nat64);
      "get_swap_price" : (Currency, Currency) -> (float64);
+     // 项目使用接口
+     "create_organize": (text) -> (text);
+     "transfer_organization_ownership": (text, principal) -> (text);
+     "disband_the_organization": (text) -> (text);
+
 }
 

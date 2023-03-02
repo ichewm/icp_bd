@@ -2,13 +2,17 @@ mod clients;
 mod common;
 
 use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use crate::clients::dip20::Dip20;
 use crate::clients::sonic::Sonic;
 use crate::clients::xtc::{XTCBurnPayload, XTC};
 use crate::clients::nns_cycles_minting::{NNS_Cycle_Minting, IcpXdrConversionRateCertifiedResponse, IcpXdrConversionRate};
 use crate::clients::black_hole::{BlackHole, CanisterStatusArg0};
 use crate::common::guards::controller_guard;
-use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice};
+use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo};
+
+use std::collections::BTreeMap;
+
 use bigdecimal::num_bigint::{BigInt, ToBigInt};
 use bigdecimal::num_traits::Pow;
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
@@ -20,6 +24,77 @@ use ic_cdk_macros::{heartbeat, init, post_upgrade, pre_upgrade, query, update};
 use ic_cron::implement_cron;
 use ic_cron::types::{Iterations, SchedulingOptions, TaskId};
 use ic_ledger_types::{AccountIdentifier, Subaccount, DEFAULT_SUBACCOUNT, AccountBalanceArgs, TransferArgs, Memo, Tokens, BlockIndex, TransferResult};
+
+type Members = RefCell<BTreeMap<Principal, RefCell<MemberInfo>>>;
+type Canisters = RefCell<BTreeMap<Principal, RefCell<CanisterInfo>>>;
+
+type OrganizesToMembers = BTreeMap<OrganizeName, Members>;  // 组织映射组员
+type OrganizesToCanisters = BTreeMap<OrganizeName, Canisters>;  // 组织映射罐
+type OrganizesToOwner = BTreeMap<OrganizeName, RefCell<OrganizeOwner>>;  // 组织映射所有者
+
+// 存储结构
+thread_local!{
+    static ORGANIZES_TO_MEMBERS:RefCell<OrganizesToMembers> = RefCell::default();
+    static ORGANIZES_TO_CANISTERS:RefCell<OrganizesToCanisters> = RefCell::default();
+    static ORGANIZES_TO_OWNER:RefCell<OrganizesToOwner> = RefCell::default();
+}
+
+// 创建组织
+#[update]
+pub async fn create_organize(organize_name: String) -> String {
+    let organize_owner = ic_cdk::api::caller();
+    // 判断当前 组织名是否已经存在 【组织名不可再罐内重复】
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        if organizes_to_owner.borrow().contains_key(&organize_name){
+            String::from("organize name already exists")  // organize name 已经存在
+        } else {
+            organizes_to_owner.borrow_mut().insert(organize_name, RefCell::new(organize_owner));
+            String::from("organize name created successfully")  // organize name 创建成功
+        }
+    })
+
+}
+
+// 转让组织所有权
+#[update]
+pub async fn transfer_organization_ownership(organize_name: String, new_owner: Principal) -> String {
+    let old_owner = ic_cdk::api::caller();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        if organizes_to_owner.borrow().contains_key(&organize_name){
+            if organizes_to_owner.borrow().get(&organize_name).unwrap() == &RefCell::new(old_owner) {
+                organizes_to_owner.borrow_mut().insert(organize_name, RefCell::new(new_owner));
+                String::from("Transfer Organization Ownership Success")  // 转让组织所有权 成功
+            } else {
+                String::from("Non-organization owner, cannot perform transfer")  // 非组织所有人，无法执行转让
+            }
+        } else {
+            String::from("organization does not exist")  // 组织不存在
+        }
+    })
+}
+
+// 删除组织
+#[update]
+pub async fn disband_the_organization(organize_name: String) -> String {
+    let organize_owner = ic_cdk::api::caller();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        if organizes_to_owner.borrow().contains_key(&organize_name){
+            if organizes_to_owner.borrow().get(&organize_name).unwrap() == &RefCell::new(organize_owner) {
+                organizes_to_owner.borrow_mut().remove_entry(&organize_name);
+                String::from("Organization Disbanded Successfully")  // 组织解散成功
+            } else {
+                String::from("Non-organization owner, cannot perform dissolution")  // 非组织所有人，无法执行解散
+            }
+        } else {
+            String::from("organization does not exist")  // 组织不存在
+        }
+    })
+}
+
+// 组织所有人 向组织 添加成员
+
+
+
 
 
 async fn get_swap_price_internal(give_currency: Currency, take_currency: Currency) -> BigDecimal {
