@@ -36,7 +36,8 @@ type OrganizesToOwner = BTreeMap<OrganizeName, RefCell<OrganizeOwner>>;  // 组�
 
 // 组织所有者 下组织及用户输出结构
 type OrganizationOwnerMemberOutput = Vec<OrganizesToMembers>;
-
+// 组织所有者 下组织及罐输出结构
+type OrganizationOwnerCanisterOutput = Vec<OrganizesToCanisters>;
 
 // 存储结构
 thread_local!{
@@ -232,8 +233,9 @@ pub async fn the_organization_owner_queries_the_organization_under_his_own_name_
 
 // 组织所有人向组织添加新罐
 #[update]
-pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_name:String, canister_id: Principal, time_interval: u64, cycles_minimum: u64, cycles_highest: u64) -> String {
+pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_name:String, canister_name: String, canister_id: Principal, time_interval: u64, cycles_minimum: u64, cycles_highest: u64) -> String {
     let requester_id = ic_cdk::api::caller();
+    let cycle_balance = use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap();
     ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
         // 组织必须存在
         if !organizes_to_owner.borrow().contains_key(&organize_name){
@@ -252,15 +254,19 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                 if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
                     String::from("The member already exists in this organization")  // 该成员已经存在于这个组织
                 } else {
+
+
                     // 罐不存在 新增罐
+                    
+
                     organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().insert(
                         canister_id, 
                         RefCell::new(
                             CanisterInfo{
-                                nickname: member_name,
+                                nickname: canister_name,
                                 instime: Cell::new(ic_cdk::api::time()),
                                 updtime: Cell::new(ic_cdk::api::time()),
-                                cycles_balance: Cell::new(use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap()),
+                                cycles_balance: Cell::new(cycle_balance),
                                 time_interval: Cell::new(time_interval),
                                 cycles_minimum: Cell::new(cycles_minimum),
                                 cycles_highest: Cell::new(cycles_highest),
@@ -276,10 +282,10 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                 canisters.borrow_mut().insert(
                     canister_id, 
                     RefCell::new(CanisterInfo{
-                        nickname: member_name,
+                        nickname: canister_name,
                         instime: Cell::new(ic_cdk::api::time()),
                         updtime: Cell::new(ic_cdk::api::time()),
-                        cycles_balance: Cell::new(use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap()),
+                        cycles_balance: Cell::new(cycle_balance),
                         time_interval: Cell::new(time_interval),
                         cycles_minimum: Cell::new(cycles_minimum),
                         cycles_highest: Cell::new(cycles_highest),
@@ -329,7 +335,85 @@ pub async fn organization_owner_delete_jar(organize_name:String, canister_id: Pr
 }
 
 
+// 组织所有人 修改罐
+#[update]
+pub async fn organization_owner_modify_jar(organize_name: String, canister_id:Principal, time_interval:u64, cycles_minimum:u64, cycles_highest:u64) -> String {
+    let requester_id = ic_cdk::api::caller();
+    let cycle_balance = use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap();
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 组织必须存在
+        if !organizes_to_owner.borrow().contains_key(&organize_name){
+           return String::from("organization does not exist");  // 组织不存在
+        };
+
+        // 操作人必须是 owner
+        if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
+            return String::from("Non-organization owners cannot add members");  // 非组织所有者不可添加成员
+        };
+
+        ORGANIZES_TO_CANISTERS.with(|organizes_to_canisters|{
+            if organizes_to_canisters.borrow().get(&organize_name).is_some(){
+                // 检查这个罐是否存在
+                if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
+                    // 如果罐存在就更新字段
+                    organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().time_interval.set(time_interval);
+                    organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().cycles_minimum.set(cycles_minimum);
+                    organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().cycles_highest.set(cycles_highest);
+                    organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().cycles_balance.set(cycle_balance);
+                    String::from("Canister details updated successfully")  // canister 详情更新成功
+
+                } else {
+                    // 罐不存在 返回罐不存在
+                    String::from("The canister does not exist under this organization") 
+                }
+            } else {
+                // 组织如果不存就返回 罐不存在
+                String::from("The canister does not exist under this organization")  // 组织罐新增成功
+            }
+        })
+    })
+}
+
+
 // 组织所有人 查询自己名下组织及组织下的罐
+#[query]
+pub async fn organization_owner_query_the_organization_under_his_name_and_the_tanks_under_the_organization() -> OrganizationOwnerCanisterOutput {
+    let requester_id = ic_cdk::api::caller();
+    // 找到这个人的所有组织
+    ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
+        // 创建一个存储 组织名的 向量
+        let mut organizes:Vec<String> = Vec::new();
+        // 创建一个输出 结构
+        let mut organization_owner_canister_output = OrganizationOwnerCanisterOutput::new();
+
+        for (organize_name, owner_id) in organizes_to_owner.borrow_mut().iter(){
+            if *owner_id == RefCell::new(requester_id) {
+                // let f = organize_name.to_string();
+                organizes.push(organize_name.to_string());
+            }
+        }
+
+        ORGANIZES_TO_CANISTERS.with(|organizes_to_canisters|{
+            // // 循环 组织名向量 获取所有组织下的所有罐
+            for organize_name in organizes {
+                match organizes_to_canisters.borrow().get(&organize_name) {
+                    Some(canister_info) => {
+                        let mut o_t_m = OrganizesToCanisters::new();
+                        o_t_m.insert(organize_name, canister_info.clone());
+                        organization_owner_canister_output.push(o_t_m);
+                    },
+                    None => {
+                        let mut o_t_m = OrganizesToCanisters::new();
+                        let canisters: Canisters= BTreeMap::new().into();
+                        o_t_m.insert(organize_name, canisters);
+                        organization_owner_canister_output.push(o_t_m);
+                    },
+                }
+            }
+        });
+        organization_owner_canister_output
+    })
+}
 
 
 // 私有方法 
@@ -345,6 +429,11 @@ fn delete_synchronously (organize_name:&String) {
         }
     })
 }
+
+
+
+
+
 
 
 

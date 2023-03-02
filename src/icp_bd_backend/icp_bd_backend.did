@@ -47,12 +47,16 @@ service : {
      "icp_balance" : (principal) -> (nat64);
      "get_swap_price" : (Currency, Currency) -> (float64);
      // 项目使用接口
+     // 组织组织接口
      "create_organize": (text) -> (text);  // 创建组织
      "transfer_organization_ownership": (text, principal) -> (text);  // 转让组织所有权
      "disband_the_organization": (text) -> (text);  // 解散组织
+     // 组织成员接口
      "organization_owner_add_members_to_organization": (principal, text, text) -> (text);  // 组织所有人 向组织 添加成员
      "organization_owner_minus_organization_members": (principal, text) -> (text);  // 组织 所有人 减掉 组织成员
      "the_organization_owner_queries_the_organization_under_his_own_name_and_the_users_under_the_organization": () -> (OrganizationOwnerMemberOutput);  // 组织所有者查询自己名下组织及组织下的用户
+    // 组织罐接口
+    "the_organization_owner_adds_a_new_jar_to_the_organization"
 
 }
 
