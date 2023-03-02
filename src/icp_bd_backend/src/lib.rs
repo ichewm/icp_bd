@@ -134,7 +134,7 @@ pub async fn organization_owner_add_members_to_organization(member_id: Principal
                 // 组织如果不存在就新增组织并添加成员
 
                 // 创建成员结构
-                let mut members: Members= BTreeMap::new().into();
+                let members: Members= BTreeMap::new().into();
                 members.borrow_mut().insert(
                     member_id, 
                     RefCell::new(MemberInfo{
@@ -214,7 +214,15 @@ pub async fn the_organization_owner_queries_the_organization_under_his_own_name_
                         o_t_m.insert(organize_name, member_info.clone());
                         organization_owner_member_output.push(o_t_m);
                     },
-                    None => (),
+                    None => {
+                        let mut o_t_m = OrganizesToMembers::new();
+                        let members: Members= BTreeMap::new().into();
+
+
+
+                        o_t_m.insert(organize_name, members);
+                        organization_owner_member_output.push(o_t_m);
+                    },
                 }
             }
         });
