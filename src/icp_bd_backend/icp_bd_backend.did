@@ -32,8 +32,26 @@ type OrganizesToMembers = vec record {
   text; Members
 };
 
-type OrganizationOwnerMemberOutput = vec OrganizesToMembers;
+type CanisterInfo = record {
+    nickname: text; // 罐别称
+    instime: nat64;  // 罐插入时间
+    updtime: nat64;  // 上次更新Cycles时间
+    cycles_balance: nat64;  // 罐余额
+    time_interval: nat64; // 轮训时间间隔
+    cycles_minimum: nat64;  // 最低Cycles
+    cycles_highest: nat64;  // 最高Cycles
+};
 
+type Canisters = vec record {
+  principal; CanisterInfo
+};
+
+type OrganizesToCanisters = vec record {
+  text; Canisters
+};
+
+type OrganizationOwnerMemberOutput = vec OrganizesToMembers;
+type OrganizationOwnerCanisterOutput = vec OrganizesToCanisters;
 
 
 service : {
@@ -56,7 +74,9 @@ service : {
      "organization_owner_minus_organization_members": (principal, text) -> (text);  // 组织 所有人 减掉 组织成员
      "the_organization_owner_queries_the_organization_under_his_own_name_and_the_users_under_the_organization": () -> (OrganizationOwnerMemberOutput);  // 组织所有者查询自己名下组织及组织下的用户
     // 组织罐接口
-    "the_organization_owner_adds_a_new_jar_to_the_organization"
-
+    "the_organization_owner_adds_a_new_jar_to_the_organization": (text, text, principal, nat64, nat64, nat64) -> (text);  // 组织所有人向组织添加新罐
+    "organization_owner_delete_jar": (text, principal) -> (text);  // 组织所有人 删除罐
+    "organization_owner_modify_jar": (text, principal, nat64, nat64, nat64) -> (text);  // 组织所有人 修改罐
+    "organization_owner_query_the_organization_under_his_name_and_the_tanks_under_the_organization": () -> (OrganizationOwnerCanisterOutput);  // 组织所有人 查询自己名下组织及组织下的罐
 }
 

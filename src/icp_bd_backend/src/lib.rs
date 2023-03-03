@@ -322,6 +322,7 @@ pub async fn organization_owner_delete_jar(organize_name:String, canister_id: Pr
                 // 检查这个罐是否存在 存在就删除罐
                 if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
                     organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().remove(&canister_id);
+                    delete_synchronously(&organize_name);
                     String::from("The canister has been removed from the organization")  // 该罐已在组织中删除
                 } else {
                     String::from("The canister does not exist in the organization")  // 该罐不存在于组织中
@@ -427,14 +428,17 @@ fn delete_synchronously (organize_name:&String) {
             },
             None => (),
         }
+    });
+    // 删除组织的同时删除组织罐
+    ORGANIZES_TO_CANISTERS.with(|organizes_to_canisters|{
+        match organizes_to_canisters.borrow().get(organize_name) {
+            Some(canister_info) => {
+                organizes_to_canisters.borrow_mut().remove(organize_name);
+            },
+            None => (),
+        }
     })
 }
-
-
-
-
-
-
 
 
 
