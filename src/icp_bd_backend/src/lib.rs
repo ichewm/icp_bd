@@ -9,7 +9,7 @@ use crate::clients::xtc::{XTCBurnPayload, XTC};
 use crate::clients::nns_cycles_minting::{NNS_Cycle_Minting, IcpXdrConversionRateCertifiedResponse, IcpXdrConversionRate};
 use crate::clients::black_hole::{BlackHole, CanisterStatusArg0};
 use crate::common::guards::controller_guard;
-use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo};
+use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo, PubilcCanisterInfo, CanisterMappingOrganizationInfo};
 
 use std::collections::BTreeMap;
 
@@ -34,16 +34,24 @@ type OrganizesToMembers = BTreeMap<OrganizeName, Members>;  // 组织映射组�
 type OrganizesToCanisters = BTreeMap<OrganizeName, Canisters>;  // 组织映射罐
 type OrganizesToOwner = BTreeMap<OrganizeName, RefCell<OrganizeOwner>>;  // 组织映射所有者
 
+// 公共罐结构 所有组织下的罐都映射到这个 BT 中, 此中只记录 罐余额， 轮训时间间隔取 所有组织罐中最低的 最低Cycles取最低的，最高Cycles取最高的
+type PublicCanisters = BTreeMap<Principal, PubilcCanisterInfo>;
+// 记录这个罐都被那个组织添加了，以备在罐余额不足时直接命中组织进而找到成员，组织排序方式按照最低Cycles进行排序,可以找到最低设置Cycle用户
+type CanistersToOrganizes = BTreeMap<Principal, RefCell<Vec<CanisterMappingOrganizationInfo>>>;
+
 // 组织所有者 下组织及用户输出结构
 type OrganizationOwnerMemberOutput = Vec<OrganizesToMembers>;
 // 组织所有者 下组织及罐输出结构
 type OrganizationOwnerCanisterOutput = Vec<OrganizesToCanisters>;
+
 
 // 存储结构
 thread_local!{
     static ORGANIZES_TO_MEMBERS:RefCell<OrganizesToMembers> = RefCell::default();
     static ORGANIZES_TO_CANISTERS:RefCell<OrganizesToCanisters> = RefCell::default();
     static ORGANIZES_TO_OWNER:RefCell<OrganizesToOwner> = RefCell::default();
+    static PUBLIC_CANISTERS:RefCell<PublicCanisters> = RefCell::default();
+    static CANISTERS_TO_ORGANIZES:RefCell<CanistersToOrganizes> = RefCell::default();
 }
 
 // 创建组织
@@ -246,19 +254,14 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
         if organizes_to_owner.borrow().get(&organize_name).unwrap() != &RefCell::new(requester_id){
             return String::from("Non-organization owners cannot add members");  // 非组织所有者不可添加成员
         };
-
         ORGANIZES_TO_CANISTERS.with(|organizes_to_canisters|{
             // 检查组织是否存在不存在就新增
             if organizes_to_canisters.borrow().get(&organize_name).is_some(){
                 // 检查这个罐是否存在
                 if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
-                    String::from("The member already exists in this organization")  // 该成员已经存在于这个组织
+                    String::from("The canister already exists in this organization")  // 该罐已经存在于这个组织
                 } else {
-
-
                     // 罐不存在 新增罐
-                    
-
                     organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().insert(
                         canister_id, 
                         RefCell::new(
@@ -272,6 +275,15 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                                 cycles_highest: Cell::new(cycles_highest),
                             }
                         ));
+                    // 为公共罐结构增加罐
+                    add_or_update_public_canisters(
+                        canister_id, 
+                        ic_cdk::api::time(), 
+                        cycle_balance, 
+                        time_interval, 
+                        cycles_minimum, 
+                        cycles_highest
+                    );
                     String::from("added successfully")  // 新增成功
                 }
             } else {
@@ -295,6 +307,15 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                 organizes_to_canisters.borrow_mut().insert(
                     organize_name,
                     canisters
+                );
+                // 为公共罐结构增加罐
+                add_or_update_public_canisters(
+                    canister_id, 
+                    ic_cdk::api::time(), 
+                    cycle_balance, 
+                    time_interval, 
+                    cycles_minimum, 
+                    cycles_highest
                 );
                 String::from("Organization canister added successfully")  // 组织罐新增成功
             }
@@ -361,6 +382,15 @@ pub async fn organization_owner_modify_jar(organize_name: String, canister_id:Pr
                     organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().cycles_minimum.set(cycles_minimum);
                     organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().cycles_highest.set(cycles_highest);
                     organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).unwrap().borrow_mut().cycles_balance.set(cycle_balance);
+                     // 为公共罐结构增加罐
+                     add_or_update_public_canisters(
+                        canister_id, 
+                        ic_cdk::api::time(), 
+                        cycle_balance, 
+                        time_interval, 
+                        cycles_minimum, 
+                        cycles_highest
+                    );
                     String::from("Canister details updated successfully")  // canister 详情更新成功
 
                 } else {
@@ -436,6 +466,51 @@ fn delete_synchronously (organize_name:&String) {
                 organizes_to_canisters.borrow_mut().remove(organize_name);
             },
             None => (),
+        }
+    })
+}
+
+// 公共罐映射 添加和修改
+fn add_or_update_public_canisters (canister_id: Principal,updtime: u64, cycles_balance: u64, time_interval: u64, cycles_minimum: u64, cycles_highest: u64) {
+    // 公共罐映射 添加和修改
+    PUBLIC_CANISTERS.with(|public_canisters|{
+        // 这个罐存在
+        if public_canisters.borrow().get(&canister_id).is_some(){
+            // 获取公共罐的 time_interval cycles_minimum cycles_highest
+            // let p_time_interval = &public_canisters.borrow().get(&canister_id).unwrap().time_interval;
+            // let p_cycles_minimum = &public_canisters.borrow().get(&canister_id).unwrap().cycles_minimum;
+            // let p_cycles_highest = &public_canisters.borrow().get(&canister_id).unwrap().cycles_highest;
+            if public_canisters.borrow().get(&canister_id).unwrap().time_interval > Cell::new(time_interval) {
+                // 找最小的轮训时间间隔
+                public_canisters.borrow().get(&canister_id).unwrap().time_interval.set(time_interval)
+            }
+            if public_canisters.borrow().get(&canister_id).unwrap().cycles_minimum > Cell::new(cycles_minimum) {
+                // 找最低限度的 Cycles
+                public_canisters.borrow().get(&canister_id).unwrap().cycles_minimum.set(cycles_minimum)
+            }
+            if public_canisters.borrow().get(&canister_id).unwrap().cycles_highest < Cell::new(cycles_highest) {
+                // 找最高限度的 Cycles
+                public_canisters.borrow().get(&canister_id).unwrap().cycles_highest.set(cycles_highest)
+            }
+            // 因为每触发一次此函数都会重新读取一次罐的 Cycles
+            // 故同步更新 公共 updtime  cycles_balance
+            public_canisters.borrow().get(&canister_id).unwrap().updtime.set(updtime);
+            public_canisters.borrow().get(&canister_id).unwrap().cycles_balance.set(cycles_balance);
+
+            // 同步更新完还需要 更新所有组织下 updtime  cycles_balance
+            todo!("这还没写！！！！！！");
+        } else {
+            // 这个罐不存在 新增罐
+            public_canisters.borrow_mut().insert(
+                canister_id,
+                PubilcCanisterInfo{
+                    updtime:Cell::new(updtime),
+                    cycles_balance:Cell::new(cycles_balance),
+                    time_interval:Cell::new(time_interval),
+                    cycles_minimum:Cell::new(cycles_minimum),
+                    cycles_highest:Cell::new(cycles_highest),
+                }
+            );
         }
     })
 }

@@ -29,6 +29,23 @@ pub struct  CanisterInfo {
     pub cycles_highest:Cell<u64>,  // 最高Cycles
 }
 
+// 公共罐信息
+#[derive(CandidType, Deserialize, Clone)]
+pub struct  PubilcCanisterInfo {
+    pub updtime:Cell<u64>,  // 公共上次更新Cycles时间
+    pub cycles_balance: Cell<u64>,  // 罐余额
+    pub time_interval: Cell<u64>,  // 轮训时间间隔
+    pub cycles_minimum: Cell<u64>,  // 公共最低Cycles
+    pub cycles_highest:Cell<u64>,  // 公共最高Cycles
+}
+
+// 罐映射组织信息
+#[derive(CandidType, Deserialize, Clone)]
+pub struct CanisterMappingOrganizationInfo {
+    pub organize_name: String,  // 罐名
+    pub min_cycles: Cell<u64>,  // 最小罐循环
+}
+
 
 
 
