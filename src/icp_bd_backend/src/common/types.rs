@@ -40,9 +40,9 @@ pub struct  PubilcCanisterInfo {
 }
 
 // 罐映射组织信息
-#[derive(CandidType, Deserialize, Clone)]
+#[derive(CandidType, Deserialize, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CanisterMappingOrganizationInfo {
-    pub organize_name: String,  // 罐名
+    pub organize_name: String,  // 组织名
     pub min_cycles: Cell<u64>,  // 最小罐循环
 }
 
@@ -94,4 +94,12 @@ pub enum Currency {
     SONIC,
     NnsCyclesMinting,
     BlackHole,
+}
+
+
+#[derive(CandidType, Deserialize, Clone, PartialEq)]
+pub enum Opts {
+    ADD,
+    UPDATE,
+    DELETE,
 }

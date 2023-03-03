@@ -3,13 +3,14 @@ mod common;
 
 use std::borrow::BorrowMut;
 use std::cell::{RefCell, Cell};
+use std::ops::IndexMut;
 use crate::clients::dip20::Dip20;
 use crate::clients::sonic::Sonic;
 use crate::clients::xtc::{XTCBurnPayload, XTC};
 use crate::clients::nns_cycles_minting::{NNS_Cycle_Minting, IcpXdrConversionRateCertifiedResponse, IcpXdrConversionRate};
 use crate::clients::black_hole::{BlackHole, CanisterStatusArg0};
 use crate::common::guards::controller_guard;
-use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo, PubilcCanisterInfo, CanisterMappingOrganizationInfo};
+use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo, PubilcCanisterInfo, CanisterMappingOrganizationInfo, Opts};
 
 use std::collections::BTreeMap;
 
@@ -37,6 +38,7 @@ type OrganizesToOwner = BTreeMap<OrganizeName, RefCell<OrganizeOwner>>;  // 组�
 // 公共罐结构 所有组织下的罐都映射到这个 BT 中, 此中只记录 罐余额， 轮训时间间隔取 所有组织罐中最低的 最低Cycles取最低的，最高Cycles取最高的
 type PublicCanisters = BTreeMap<Principal, PubilcCanisterInfo>;
 // 记录这个罐都被那个组织添加了，以备在罐余额不足时直接命中组织进而找到成员，组织排序方式按照最低Cycles进行排序,可以找到最低设置Cycle用户
+// Vec 有排序方法 CanistersInfo.sort_by(|op, m| m.min_cycles.cmp(&op.min_cycles));
 type CanistersToOrganizes = BTreeMap<Principal, RefCell<Vec<CanisterMappingOrganizationInfo>>>;
 
 // 组织所有者 下组织及用户输出结构
@@ -477,9 +479,6 @@ fn add_or_update_public_canisters (canister_id: Principal,updtime: u64, cycles_b
         // 这个罐存在
         if public_canisters.borrow().get(&canister_id).is_some(){
             // 获取公共罐的 time_interval cycles_minimum cycles_highest
-            // let p_time_interval = &public_canisters.borrow().get(&canister_id).unwrap().time_interval;
-            // let p_cycles_minimum = &public_canisters.borrow().get(&canister_id).unwrap().cycles_minimum;
-            // let p_cycles_highest = &public_canisters.borrow().get(&canister_id).unwrap().cycles_highest;
             if public_canisters.borrow().get(&canister_id).unwrap().time_interval > Cell::new(time_interval) {
                 // 找最小的轮训时间间隔
                 public_canisters.borrow().get(&canister_id).unwrap().time_interval.set(time_interval)
@@ -516,6 +515,55 @@ fn add_or_update_public_canisters (canister_id: Principal,updtime: u64, cycles_b
 }
 
 
+// 罐映射组织排序 操作 [新增/修改/删除]
+fn canister_mapping_organization_deal_with(opt: Opts, canister_id:Principal, organize_name: String, min_cycles: u64) {
+    // 罐组织映射结构操作有三种
+    
+    CANISTERS_TO_ORGANIZES.with(|canisters_to_organizes|{
+        // 当这个罐 组织 映射不存在时 对 且 opt 为 ADD时 对 Vec 进行初始化新增
+        if opt == Opts::ADD {
+            // 罐组织不存在是进行初始化新增
+            if canisters_to_organizes.borrow_mut().get(&canister_id).is_none(){
+                let mut v_c_m_z_i = Vec::new();
+                v_c_m_z_i.push(
+                    CanisterMappingOrganizationInfo{
+                        organize_name: organize_name,
+                        min_cycles:Cell::new(min_cycles),
+                    }
+                );
+                canisters_to_organizes.borrow_mut().insert(
+                    canister_id, 
+                    RefCell::new(v_c_m_z_i),
+                );
+            } else {
+                // 罐组织存在 进行 push 新增
+                canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().push(
+                    CanisterMappingOrganizationInfo {
+                        organize_name: organize_name,
+                        min_cycles: Cell::new(min_cycles),
+                    }
+                );
+            }
+        } else if opt == Opts::UPDATE {
+            // 罐组织存在修改 min_cycles
+            if let Some(target) = canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().find(|cmoi|{cmoi.organize_name == organize_name}){
+                target.borrow_mut().min_cycles.set(min_cycles);
+            } else {
+                ();
+            }
+
+            
+        } else {
+            // 罐组织存在 进行删除
+            if let Some(target)= canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().position(|cmoi|{cmoi.organize_name == organize_name}) {
+                // target.borrow_mut().organize_name.remove(index);
+                let f = canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().remove(target);
+            } else {
+                ();
+            }
+        }
+    })
+}
 
 async fn get_swap_price_internal(give_currency: Currency, take_currency: Currency) -> BigDecimal {
     let state = get_state();
