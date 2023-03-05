@@ -345,7 +345,6 @@ pub async fn organization_owner_delete_jar(organize_name:String, canister_id: Pr
                 // 检查这个罐是否存在 存在就删除罐
                 if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
                     organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().remove(&canister_id);
-                    delete_synchronously(&organize_name);
                     String::from("The canister has been removed from the organization")  // 该罐已在组织中删除
                 } else {
                     String::from("The canister does not exist in the organization")  // 该罐不存在于组织中
@@ -445,6 +444,16 @@ pub async fn organization_owner_query_the_organization_under_his_name_and_the_ta
             }
         });
         organization_owner_canister_output
+    })
+}
+
+
+// 测试期间方法  
+// 查询公共映射罐结构
+#[query]
+pub async fn query_the_structure_of_the_public_rotation_training_tank() -> PublicCanisters {
+    PUBLIC_CANISTERS.with(|public_canisters|{
+        public_canisters.borrow_mut().clone()
     })
 }
 
@@ -551,8 +560,6 @@ fn canister_mapping_organization_deal_with(opt: Opts, canister_id:Principal, org
             } else {
                 ();
             }
-
-            
         } else {
             // 罐组织存在 进行删除
             if let Some(target)= canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().position(|cmoi|{cmoi.organize_name == organize_name}) {

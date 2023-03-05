@@ -42,6 +42,14 @@ type CanisterInfo = record {
     cycles_highest: nat64;  // 最高Cycles
 };
 
+type PubilcCanisterInfo = record {
+    updtime: nat64;  // 公共上次更新Cycles时间
+    cycles_balance: nat64;  //  罐余额
+    time_interval: nat64; // 轮训时间间隔
+    cycles_minimum: nat64;  // 公共最低Cycles
+    cycles_highest: nat64;  // 公共最高Cycles
+};
+
 type Canisters = vec record {
   principal; CanisterInfo
 };
@@ -52,6 +60,10 @@ type OrganizesToCanisters = vec record {
 
 type OrganizationOwnerMemberOutput = vec OrganizesToMembers;
 type OrganizationOwnerCanisterOutput = vec OrganizesToCanisters;
+
+type PublicCanisters = vec record {
+  principal; PubilcCanisterInfo
+};
 
 
 service : {
@@ -78,5 +90,7 @@ service : {
     "organization_owner_delete_jar": (text, principal) -> (text);  // 组织所有人 删除罐
     "organization_owner_modify_jar": (text, principal, nat64, nat64, nat64) -> (text);  // 组织所有人 修改罐
     "organization_owner_query_the_organization_under_his_name_and_the_tanks_under_the_organization": () -> (OrganizationOwnerCanisterOutput);  // 组织所有人 查询自己名下组织及组织下的罐
+    // 测试期间使用接口
+    "query_the_structure_of_the_public_rotation_training_tank": () -> (PublicCanisters) query; 
 }
 
