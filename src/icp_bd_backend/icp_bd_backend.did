@@ -50,6 +50,11 @@ type PubilcCanisterInfo = record {
     cycles_highest: nat64;  // 公共最高Cycles
 };
 
+type CanisterMappingOrganizationInfo = record {
+    organize_name: text;  // 组织名
+    min_cycles: nat64;  // 最小罐循环
+};
+
 type Canisters = vec record {
   principal; CanisterInfo
 };
@@ -64,6 +69,8 @@ type OrganizationOwnerCanisterOutput = vec OrganizesToCanisters;
 type PublicCanisters = vec record {
   principal; PubilcCanisterInfo
 };
+
+type CanisterMappingOrganizationInfoVec = vec CanisterMappingOrganizationInfo;
 
 
 service : {
@@ -92,5 +99,7 @@ service : {
     "organization_owner_query_the_organization_under_his_name_and_the_tanks_under_the_organization": () -> (OrganizationOwnerCanisterOutput);  // 组织所有人 查询自己名下组织及组织下的罐
     // 测试期间使用接口
     "query_the_structure_of_the_public_rotation_training_tank": () -> (PublicCanisters) query; 
+    "organize_according_to_cycles_sorting": (principal) -> (CanisterMappingOrganizationInfoVec) query;  // 返回按照 cycles 由低到高排序数组
+    "generate_random_numbers": () -> (nat64) query;
 }
 

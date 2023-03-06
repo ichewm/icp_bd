@@ -1,6 +1,7 @@
 mod clients;
 mod common;
 
+// use rand::Rng;
 use std::borrow::BorrowMut;
 use std::cell::{RefCell, Cell};
 use std::ops::IndexMut;
@@ -245,7 +246,10 @@ pub async fn the_organization_owner_queries_the_organization_under_his_own_name_
 #[update]
 pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_name:String, canister_name: String, canister_id: Principal, time_interval: u64, cycles_minimum: u64, cycles_highest: u64) -> String {
     let requester_id = ic_cdk::api::caller();
-    let cycle_balance = use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap();
+    // 正式环境使用 测试没有问题
+    // let cycle_balance = use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap();
+    // 测试环境使用直接赋值
+    let cycle_balance = generate_random_numbers().await;
     ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
         // 组织必须存在
         if !organizes_to_owner.borrow().contains_key(&organize_name){
@@ -286,6 +290,12 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                         cycles_minimum, 
                         cycles_highest
                     );
+                    // 记录该罐被那些组织收录逻辑
+                    canister_mapping_organization_deal_with(
+                        Opts::ADD, 
+                        canister_id, 
+                        organize_name, 
+                        cycles_minimum);
                     String::from("added successfully")  // 新增成功
                 }
             } else {
@@ -307,7 +317,7 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                 );
                 // 插入 组织
                 organizes_to_canisters.borrow_mut().insert(
-                    organize_name,
+                    organize_name.clone(),
                     canisters
                 );
                 // 为公共罐结构增加罐
@@ -319,6 +329,12 @@ pub async fn the_organization_owner_adds_a_new_jar_to_the_organization(organize_
                     cycles_minimum, 
                     cycles_highest
                 );
+                // 记录该罐被那些组织收录逻辑
+                canister_mapping_organization_deal_with(
+                    Opts::ADD, 
+                    canister_id, 
+                    organize_name.clone(), 
+                    cycles_minimum);
                 String::from("Organization canister added successfully")  // 组织罐新增成功
             }
         });
@@ -345,6 +361,12 @@ pub async fn organization_owner_delete_jar(organize_name:String, canister_id: Pr
                 // 检查这个罐是否存在 存在就删除罐
                 if organizes_to_canisters.borrow().get(&organize_name).unwrap().borrow().get(&canister_id).is_some(){
                     organizes_to_canisters.borrow_mut().get(&organize_name).unwrap().borrow_mut().remove(&canister_id);
+                    // 记录该罐被那些组织删除逻辑
+                    canister_mapping_organization_deal_with(
+                        Opts::DELETE, 
+                        canister_id, 
+                        organize_name, 
+                        0u64);
                     String::from("The canister has been removed from the organization")  // 该罐已在组织中删除
                 } else {
                     String::from("The canister does not exist in the organization")  // 该罐不存在于组织中
@@ -392,6 +414,12 @@ pub async fn organization_owner_modify_jar(organize_name: String, canister_id:Pr
                         cycles_minimum, 
                         cycles_highest
                     );
+                    // 记录该罐被那些组织修改逻辑
+                    canister_mapping_organization_deal_with(
+                        Opts::UPDATE, 
+                        canister_id, 
+                        organize_name, 
+                        cycles_minimum);
                     String::from("Canister details updated successfully")  // canister 详情更新成功
 
                 } else {
@@ -457,6 +485,23 @@ pub async fn query_the_structure_of_the_public_rotation_training_tank() -> Publi
     })
 }
 
+// 按照 cycles 排序 组织
+#[query]
+pub async fn organize_according_to_cycles_sorting(canister_id: Principal) -> Vec<CanisterMappingOrganizationInfo> {
+    CANISTERS_TO_ORGANIZES.with(|canisters_to_organizes|{
+        canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().sort_by(|op, m| m.min_cycles.cmp(&op.min_cycles));
+        canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().clone()
+    })
+}
+
+// 生成随机假定的 cycles
+#[query]
+pub async fn generate_random_numbers () -> u64 {
+    // let mut rng = rand::thread_rng();
+    // rng.gen::<u64>()
+    999u64
+}
+
 
 // 私有方法 
 // 同步删除
@@ -504,9 +549,6 @@ fn add_or_update_public_canisters (canister_id: Principal,updtime: u64, cycles_b
             // 故同步更新 公共 updtime  cycles_balance
             public_canisters.borrow().get(&canister_id).unwrap().updtime.set(updtime);
             public_canisters.borrow().get(&canister_id).unwrap().cycles_balance.set(cycles_balance);
-
-            // 同步更新完还需要 更新所有组织下 updtime  cycles_balance
-            todo!("这还没写！！！！！！");
         } else {
             // 这个罐不存在 新增罐
             public_canisters.borrow_mut().insert(
@@ -571,6 +613,8 @@ fn canister_mapping_organization_deal_with(opt: Opts, canister_id:Principal, org
         }
     })
 }
+
+
 
 async fn get_swap_price_internal(give_currency: Currency, take_currency: Currency) -> BigDecimal {
     let state = get_state();
