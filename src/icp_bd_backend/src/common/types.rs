@@ -39,6 +39,13 @@ pub struct  PubilcCanisterInfo {
     pub cycles_highest:Cell<u64>,  // 公共最高Cycles
 }
 
+// 用户充值ICP记录
+#[derive(CandidType, Deserialize, Clone, Copy)]
+pub struct UserRechargeICPRecordInfo {
+    pub recharge_time: u64,  // 充值时间
+    pub recharge_amount: u64,  // 充值金额
+}
+
 // 罐映射组织信息
 #[derive(CandidType, Deserialize, Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CanisterMappingOrganizationInfo {

@@ -11,7 +11,7 @@ use crate::clients::xtc::{XTCBurnPayload, XTC};
 use crate::clients::nns_cycles_minting::{NNS_Cycle_Minting, IcpXdrConversionRateCertifiedResponse, IcpXdrConversionRate};
 use crate::clients::black_hole::{BlackHole, CanisterStatusArg0};
 use crate::common::guards::controller_guard;
-use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo, PubilcCanisterInfo, CanisterMappingOrganizationInfo, Opts};
+use crate::common::types::{Currency, LimitOrder, MarketOrder, Order, OrderDirective, TargetPrice, OrganizeName, OrganizeOwner, MemberInfo, CanisterInfo, PubilcCanisterInfo, CanisterMappingOrganizationInfo, Opts, UserRechargeICPRecordInfo};
 
 use std::collections::BTreeMap;
 
@@ -41,6 +41,10 @@ type PublicCanisters = BTreeMap<Principal, PubilcCanisterInfo>;
 // 记录这个罐都被那个组织添加了，以备在罐余额不足时直接命中组织进而找到成员，组织排序方式按照最低Cycles进行排序,可以找到最低设置Cycle用户
 // Vec 有排序方法 CanistersInfo.sort_by(|op, m| m.min_cycles.cmp(&op.min_cycles));
 type CanistersToOrganizes = BTreeMap<Principal, RefCell<Vec<CanisterMappingOrganizationInfo>>>;
+// 存储用户充值记录结构  只能查到余额 使用了怎么办
+type UserRechargeRecordStructure = BTreeMap<Principal, RefCell<Vec<UserRechargeICPRecordInfo>>>;
+
+
 
 // 组织所有者 下组织及用户输出结构
 type OrganizationOwnerMemberOutput = Vec<OrganizesToMembers>;
@@ -384,7 +388,8 @@ pub async fn organization_owner_delete_jar(organize_name:String, canister_id: Pr
 #[update]
 pub async fn organization_owner_modify_jar(organize_name: String, canister_id:Principal, time_interval:u64, cycles_minimum:u64, cycles_highest:u64) -> String {
     let requester_id = ic_cdk::api::caller();
-    let cycle_balance = use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap();
+    // let cycle_balance = use_black_hole_cycles_balance(canister_id).await.0.to_u64().unwrap();
+    let cycle_balance = generate_random_numbers().await;
     ORGANIZES_TO_OWNER.with(|organizes_to_owner|{
         // 组织必须存在
         if !organizes_to_owner.borrow().contains_key(&organize_name){
@@ -597,19 +602,20 @@ fn canister_mapping_organization_deal_with(opt: Opts, canister_id:Principal, org
             }
         } else if opt == Opts::UPDATE {
             // 罐组织存在修改 min_cycles
-            if let Some(target) = canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().find(|cmoi|{cmoi.organize_name == organize_name}){
-                target.borrow_mut().min_cycles.set(min_cycles);
-            } else {
-                ();
-            }
+            canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().find(|cmoi|{cmoi.organize_name == organize_name}).unwrap().borrow_mut().min_cycles.set(min_cycles);
+            // target.borrow_mut().min_cycles.set(min_cycles);
+
         } else {
             // 罐组织存在 进行删除
-            if let Some(target)= canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().position(|cmoi|{cmoi.organize_name == organize_name}) {
-                // target.borrow_mut().organize_name.remove(index);
-                let f = canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().remove(target);
-            } else {
-                ();
-            }
+            // if let Some(target)= canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter_mut().position(|cmoi|{cmoi.organize_name == organize_name}) {
+            //     // target.borrow_mut().organize_name.remove(index);
+            //     canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().remove(target);
+            // } else {
+            //     ();
+            // }
+            let mut target= canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().iter().position(|cmoi|{cmoi.organize_name == organize_name}).unwrap();
+            canisters_to_organizes.borrow_mut().get(&canister_id).unwrap().borrow_mut().remove(target);
+            
         }
     })
 }
@@ -649,7 +655,7 @@ pub fn ic_time() -> u64 {
     ic_cdk::api::time()
 }
 
-
+// 生成属于这个罐的用户id
 #[query]
 fn select_canister_account_id() -> String {
     let canister_id = ic_cdk::api::id();
